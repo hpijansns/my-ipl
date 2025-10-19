@@ -1,0 +1,175 @@
+<!-- Save as admin.html -->
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Admin — BMS Demo</title>
+<style>
+  :root{--brand:#d92b2b}
+  body{font-family:Inter,Arial;margin:12px;background:#f4f6f8}
+  .card{background:#fff;padding:12px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.06);margin-bottom:12px}
+  input,select,textarea{width:100%;padding:8px;border-radius:6px;border:1px solid #ddd}
+  .btn{background:var(--brand);color:#fff;padding:8px 12px;border:none;border-radius:8px;cursor:pointer}
+  .muted{color:#666}
+  .small{font-size:13px}
+</style>
+</head>
+<body>
+  <h2 style="color:var(--brand)">Admin Panel (Demo)</h2>
+  <div class="card" id="loginCard">
+    <h3>Login</h3>
+    <input id="pass" type="password" placeholder="Password (admin123)"/>
+    <div style="margin-top:8px"><button class="btn" onclick="doLogin()">Login</button></div>
+  </div>
+
+  <div id="panel" style="display:none">
+    <div class="card">
+      <h3>Create / Add Event</h3>
+      <input id="evTitle" placeholder="Match title (e.g., Team A vs Team B)"/><br/><br/>
+      <input id="evDate" placeholder="Date & time (e.g., 10 Apr 2025, 7:30 PM)"/><br/><br/>
+      <input id="evVenue" placeholder="Venue"/><br/><br/>
+      <label class="small">Banner image (optional) — upload local image (will be stored in localStorage as data URL)</label>
+      <input id="evBanner" type="file" accept="image/*"/><br/><br/>
+      <label class="small">Base price (for display)</label>
+      <input id="basePrice" type="number" placeholder="200"/><br/><br/>
+      <div style="display:flex;gap:8px;">
+        <input id="rowsInput" placeholder="Rows (comma separated e.g. A,B,C)" />
+        <input id="countInput" placeholder="Seats per row (e.g. 10)" type="number" style="width:140px"/>
+        <input id="priceInput" placeholder="Price for first row (e.g. 1000)" type="number" style="width:160px"/>
+      </div>
+      <div style="margin-top:8px"><button class="btn" onclick="createEvent()">Create Event (in localStorage)</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Existing Events</h3>
+      <div id="evList"></div>
+      <div style="margin-top:8px"><button class="btn" onclick="refreshList()">Refresh</button> <button class="btn" style="background:#666;color:#fff;margin-left:6px" onclick="openPublic()">Open Public Page</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Admin Utilities</h3>
+      <div class="muted small">Reset all demo events (clear localStorage) — careful</div>
+      <div style="margin-top:8px"><button class="btn" style="background:#e74c3c" onclick="resetAll()">Reset All (clear)</button></div>
+    </div>
+  </div>
+
+<script>
+const STORAGE_KEY = 'bms_demo_events_v1';
+const ADMIN_PWD = 'admin123';
+
+function doLogin(){
+  if(document.getElementById('pass').value === ADMIN_PWD){
+    document.getElementById('loginCard').style.display='none';
+    document.getElementById('panel').style.display='block';
+    refreshList();
+  } else alert('Wrong password');
+}
+
+function loadEvents(){ try{ const raw=localStorage.getItem(STORAGE_KEY); return raw?JSON.parse(raw):[] }catch(e){return []}}
+function saveEvents(arr){ localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)) }
+
+function refreshList(){
+  const out = document.getElementById('evList');
+  const events = loadEvents();
+  out.innerHTML='';
+  if(events.length===0){ out.innerHTML='<div class="muted">No events. Create one above.</div>'; return; }
+  events.forEach(ev=>{
+    const div = document.createElement('div'); div.style.padding='8px 0'; div.style.borderBottom='1px solid #eee';
+    div.innerHTML = `<strong>${ev.title}</strong><div class="muted">${ev.date} • ${ev.venue}</div>
+      <div style="margin-top:6px"><button class="btn" onclick="viewSeats('${ev.id}')">View Seats</button>
+      <button class="btn" style="background:#666;margin-left:6px" onclick="editEvent('${ev.id}')">Edit</button>
+      <button class="btn" style="background:#e74c3c;margin-left:6px" onclick="deleteEvent('${ev.id}')">Delete</button></div>`;
+    out.appendChild(div);
+  });
+}
+
+function openPublic(){ window.open('index.html','_blank') }
+
+// create event
+async function createEvent(){
+  const title = document.getElementById('evTitle').value.trim();
+  if(!title) return alert('Title required');
+  const date = document.getElementById('evDate').value.trim();
+  const venue = document.getElementById('evVenue').value.trim();
+  const basePrice = parseInt(document.getElementById('basePrice').value) || 200;
+  // banner file -> dataURL
+  const fileInp = document.getElementById('evBanner');
+  let bannerData = '';
+  if(fileInp.files && fileInp.files[0]){
+    bannerData = await readFileAsDataURL(fileInp.files[0]);
+  }
+  // seats config
+  const rowsRaw = document.getElementById('rowsInput').value.trim() || 'A,B,C';
+  const rows = rowsRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const count = parseInt(document.getElementById('countInput').value) || 8;
+  const priceFirst = parseInt(document.getElementById('priceInput').value) || 1000;
+
+  // build seats
+  const seats = [];
+  rows.forEach((r, idx)=>{
+    for(let i=1;i<=count;i++){
+      const price = priceFirst - idx*200;
+      seats.push({ id: `${Date.now()}-${r}${i}-${Math.random().toString(36).slice(2,6)}`, row: r, number: i, price, status:'available' });
+    }
+  });
+
+  // build event
+  const id = 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
+  const ev = { id, title, date, venue, banner: bannerData, basePrice, seats };
+  const events = loadEvents();
+  events.push(ev);
+  saveEvents(events);
+  // clear form
+  document.getElementById('evTitle').value=''; document.getElementById('evDate').value=''; document.getElementById('evVenue').value='';
+  document.getElementById('evBanner').value=''; document.getElementById('rowsInput').value=''; document.getElementById('countInput').value=''; document.getElementById('priceInput').value='';
+  refreshList();
+  alert('Event created and saved (local). Open public page to view.');
+}
+
+function readFileAsDataURL(file){
+  return new Promise((res,rej)=>{
+    const fr = new FileReader();
+    fr.onload = ()=>res(fr.result);
+    fr.onerror = rej;
+    fr.readAsDataURL(file);
+  });
+}
+
+function viewSeats(id){
+  const events = loadEvents();
+  const ev = events.find(x=>x.id===id);
+  if(!ev) return alert('Not found');
+  const seats = ev.seats || [];
+  alert('Seats for '+ev.title + '\n\n' + seats.map(s=>s.row+s.number+'('+s.status+')').join(', '));
+}
+
+function deleteEvent(id){
+  if(!confirm('Delete this event?')) return;
+  let events = loadEvents();
+  events = events.filter(e=>e.id!==id);
+  saveEvents(events);
+  refreshList();
+  alert('Deleted');
+}
+
+function editEvent(id){
+  const events = loadEvents();
+  const ev = events.find(x=>x.id===id);
+  if(!ev) return alert('Not found');
+  const newTitle = prompt('Title', ev.title);
+  if(newTitle===null) return;
+  ev.title = newTitle || ev.title;
+  saveEvents(events);
+  refreshList();
+  alert('Updated (limited edit)');
+}
+
+function resetAll(){
+  if(!confirm('Clear all demo events from localStorage?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  refreshList();
+  alert('Cleared');
+}
+</script>
+</body>
+</html>
